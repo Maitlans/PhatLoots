@@ -32,7 +32,7 @@ public class PhatLootsListener implements Listener {
      *
      * @param event The PlayerInteractEvent that occurred
      */
-    @EventHandler (ignoreCancelled = true)
+    @EventHandler (ignoreCancelled = false)
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (!event.hasBlock() || event.getHand() != EquipmentSlot.HAND) {
             return;
@@ -54,7 +54,22 @@ public class PhatLootsListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        boolean looted = PhatLootsAPI.loot(event.getClickedBlock(), player, autoSpill);
+        Block block = event.getClickedBlock();
+
+        if (event.isCancelled()) {
+            boolean ignoreCancelled = false;
+            for (PhatLoot phatLoot : PhatLoots.getPhatLoots(block, player)) {
+                if (phatLoot.ignoreCancelled) {
+                    ignoreCancelled = true;
+                    break;
+                }
+            }
+            if (!ignoreCancelled) {
+                return;
+            }
+        }
+
+        boolean looted = PhatLootsAPI.loot(block, player, autoSpill);
 
         if (looted) {
             event.setCancelled(true);

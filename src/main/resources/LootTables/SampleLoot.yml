@@ -1,8 +1,40 @@
 SampleLoot:
   ==: PhatLoot
+  Name: SampleLoot
+
+  # --- Chest Access Control ---
+  # If true, prevents multiple players from opening the same physical chest at once.
+  ConcurrencyControl: true
+  # The message sent to a player when they are blocked by ConcurrencyControl.
+  ChestInUseMsg: "&cHold on! Someone else is currently looting this chest."
+
+  # --- Configurable Event Handling ---
+  # If true, PhatLoots will process the interaction even if another plugin 
+  # (like WorldGuard) has cancelled the event.
+  IgnoreCancelled: false
+
+  # --- Dynamic Particle Effects ---
+  # Settings for the visual particle effects at linked chests.
+  # If the 'Type' is removed or null, particles will be disabled.
+  Particles:
+    Type: CRIT
+    XOffset: 0.0
+    YOffset: 0.4
+    ZOffset: 0.0
+    Height: 0.0
+    Speed: 0.5
+    Amount: 10
+    Delay: 20
+
   AutoLoot: false
   BreakAndRespawn: false
   Global: false
+  RoundDownTime: false
+  Reset:
+    Days: 0
+    Hours: 0
+    Minutes: 0
+    Seconds: 0
   LootConditions: []
   LootList:
     - ==: LootCollection
@@ -1011,10 +1043,3 @@ SampleLoot:
       Lower: 0
       Probability: 100.0
       Upper: 0
-  Name: SampleLoot
-  Reset:
-    Hours: 0
-    Days: 0
-    Seconds: 0
-    Minutes: 0
-  RoundDownTime: false

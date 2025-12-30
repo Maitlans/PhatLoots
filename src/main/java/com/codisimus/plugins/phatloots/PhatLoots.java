@@ -252,6 +252,9 @@ public class PhatLoots extends JavaPlugin {
             this.getServer().getScheduler().runTaskTimer(this, PhatLoots::saveLootTimes, autoSavePeriod, autoSavePeriod);
         }
 
+        /* Start particle repeating task */
+        this.getServer().getScheduler().runTaskTimer(this, new ParticleManager(), 1L, 1L);
+
         new Metrics(this, 5032);
     }
 

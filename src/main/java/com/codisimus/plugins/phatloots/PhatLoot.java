@@ -69,6 +69,24 @@ public final class PhatLoot implements ConfigurationSerializable {
     public boolean round;
     public boolean autoLoot;
     public boolean breakAndRespawn;
+
+    // Particle settings
+    public String particleType;
+    public double particleXOffset;
+    public double particleYOffset;
+    public double particleZOffset;
+    public double particleHeight;
+    public double particleSpeed;
+    public int particleAmount;
+    public int particleDelay;
+
+    // Concurrency control
+    public boolean concurrencyControl;
+    public String chestInUseMsg;
+
+    // Event handling
+    public boolean ignoreCancelled;
+
     private final Set<PhatLootChest> chests = new HashSet<>(); //Set of Chests linked to this PhatLoot
     private final Properties lootTimes = new Properties(); //PhatLootChest'PlayerName=Year'Day'Hour'Minute'Second
 
@@ -88,6 +106,20 @@ public final class PhatLoot implements ConfigurationSerializable {
         round = PhatLootsConfig.defaultRound;
         autoLoot = PhatLootsConfig.defaultAutoLoot;
         breakAndRespawn = PhatLootsConfig.defaultBreakAndRespawn;
+
+        particleType = null;
+        particleXOffset = 0.0;
+        particleYOffset = 0.0;
+        particleZOffset = 0.0;
+        particleHeight = 0.0;
+        particleSpeed = 0.0;
+        particleAmount = 1;
+        particleDelay = 20;
+
+        concurrencyControl = false;
+        chestInUseMsg = "&cThis chest is currently being used by another player.";
+
+        ignoreCancelled = false;
 
         // Adds default conditions when a PhatLoot is made
         lootConditions.addAll(PhatLoots.plugin.getDefaultConditions());
@@ -1180,6 +1212,26 @@ public final class PhatLoot implements ConfigurationSerializable {
         map.put("AutoLoot", autoLoot);
         map.put("BreakAndRespawn", breakAndRespawn);
 
+        if (particleType != null) {
+            Map<String, Object> particleMap = new HashMap<>();
+            particleMap.put("Type", particleType);
+            particleMap.put("XOffset", particleXOffset);
+            particleMap.put("YOffset", particleYOffset);
+            particleMap.put("ZOffset", particleZOffset);
+            particleMap.put("Height", particleHeight);
+            particleMap.put("Speed", particleSpeed);
+            particleMap.put("Amount", particleAmount);
+            particleMap.put("Delay", particleDelay);
+            map.put("Particles", particleMap);
+        }
+
+        map.put("ConcurrencyControl", concurrencyControl);
+        if (chestInUseMsg != null) {
+            map.put("ChestInUseMsg", chestInUseMsg);
+        }
+
+        map.put("IgnoreCancelled", ignoreCancelled);
+
         map.put("LootList", lootList);
         map.put("LootConditions", lootConditions);
         return map;
@@ -1206,6 +1258,28 @@ public final class PhatLoot implements ConfigurationSerializable {
             autoLoot = (Boolean) map.get(currentLine = "AutoLoot");
             if (map.containsKey("BreakAndRespawn")) {
                 breakAndRespawn = (Boolean) map.get(currentLine = "BreakAndRespawn");
+            }
+
+            if (map.containsKey("Particles")) {
+                Map<String, Object> particleMap = (Map<String, Object>) map.get(currentLine = "Particles");
+                particleType = (String) particleMap.get("Type");
+                particleXOffset = ((Number) particleMap.get("XOffset")).doubleValue();
+                particleYOffset = ((Number) particleMap.get("YOffset")).doubleValue();
+                particleZOffset = ((Number) particleMap.get("ZOffset")).doubleValue();
+                particleHeight = ((Number) particleMap.get("Height")).doubleValue();
+                particleSpeed = ((Number) particleMap.get("Speed")).doubleValue();
+                particleAmount = ((Number) particleMap.get("Amount")).intValue();
+                particleDelay = ((Number) particleMap.get("Delay")).intValue();
+            }
+
+            if (map.containsKey("ConcurrencyControl")) {
+                concurrencyControl = (Boolean) map.get(currentLine = "ConcurrencyControl");
+            }
+            if (map.containsKey("ChestInUseMsg")) {
+                chestInUseMsg = (String) map.get(currentLine = "ChestInUseMsg");
+            }
+            if (map.containsKey("IgnoreCancelled")) {
+                ignoreCancelled = (Boolean) map.get(currentLine = "IgnoreCancelled");
             }
 
             //Check which version the file is

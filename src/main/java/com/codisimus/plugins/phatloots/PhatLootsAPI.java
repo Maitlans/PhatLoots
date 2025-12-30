@@ -3,6 +3,7 @@ package com.codisimus.plugins.phatloots;
 import com.codisimus.plugins.phatloots.events.ChestOpenEvent;
 import com.codisimus.plugins.phatloots.loot.LootBundle;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryType;
@@ -127,6 +128,16 @@ public class PhatLootsAPI {
             return false;
         }
         PhatLootChest plChest = PhatLootChest.getChest(block);
+
+        // Check for concurrency control
+        for (PhatLoot phatLoot : phatLoots) {
+            if (phatLoot.concurrencyControl && PhatLootChest.openPhatLootChests.containsValue(plChest)) {
+                if (phatLoot.chestInUseMsg != null && !phatLoot.chestInUseMsg.isEmpty()) {
+                    player.sendMessage(ChatColor.translateAlternateColorCodes('&', phatLoot.chestInUseMsg));
+                }
+                return true;
+            }
+        }
 
         //Roll for Loot of each linked PhatLoot
         boolean flagToBreak = true;

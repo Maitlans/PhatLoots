@@ -193,6 +193,42 @@ public class PhatLootChest {
     }
 
     /**
+     * Returns the name of the World this chest is in
+     *
+     * @return The name of the World
+     */
+    public String getWorldName() {
+        return world;
+    }
+
+    /**
+     * Returns the x-coordinate of the Block
+     *
+     * @return The x-coordinate
+     */
+    public int getX() {
+        return x;
+    }
+
+    /**
+     * Returns the y-coordinate of the Block
+     *
+     * @return The y-coordinate
+     */
+    public int getY() {
+        return y;
+    }
+
+    /**
+     * Returns the z-coordinate of the Block
+     *
+     * @return The z-coordinate
+     */
+    public int getZ() {
+        return z;
+    }
+
+    /**
      * Returns the Location this chest is located at
      *
      * @return The Location this chest is located at
