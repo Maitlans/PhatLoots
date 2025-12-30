@@ -178,8 +178,7 @@ public class PhatLootChest {
      * @return true if the given Block is linked to a PhatLoot
      */
     public static boolean isPhatLootChest(Block block) {
-        String key = toString(PhatLootsUtil.getLeftSide(block));
-        return chests.containsKey(key);
+        return PhatLoots.isPhatLootChest(block);
     }
 
     /**
@@ -261,14 +260,8 @@ public class PhatLootChest {
      *
      * @return a list of PhatLoots linked to the chest
      */
-    public LinkedList<PhatLoot> getLinkedPhatLoots() {
-        LinkedList<PhatLoot> phatLoots = new LinkedList<>();
-        for (PhatLoot phatLoot : PhatLoots.getPhatLoots()) {
-            if (phatLoot.containsChest(this)) {
-                phatLoots.add(phatLoot);
-            }
-        }
-        return phatLoots;
+    public List<PhatLoot> getLinkedPhatLoots() {
+        return PhatLoots.getPhatLoots(getBlock());
     }
 
     /**
@@ -478,9 +471,24 @@ public class PhatLootChest {
             addItem(item, player, inventory);
         }
         if (PhatLootChest.shuffleLoot || shuffleLoot) {
-            List<ItemStack> contents = Arrays.asList(inventory.getContents());
-            Collections.shuffle(contents);
-            inventory.setContents(contents.toArray(new ItemStack[0]));
+            ItemStack[] contents = inventory.getContents();
+            shuffleArray(contents);
+            inventory.setContents(contents);
+        }
+    }
+
+    /**
+     * Efficiently shuffles an array of ItemStacks in-place.
+     *
+     * @param array The array to shuffle
+     */
+    private static void shuffleArray(ItemStack[] array) {
+        java.util.Random random = java.util.concurrent.ThreadLocalRandom.current();
+        for (int i = array.length - 1; i > 0; i--) {
+            int index = random.nextInt(i + 1);
+            ItemStack a = array[index];
+            array[index] = array[i];
+            array[i] = a;
         }
     }
 
@@ -606,8 +614,7 @@ public class PhatLootChest {
      */
     public void closeInventory(Player player, Inventory inv, boolean global) {
         openPhatLootChests.remove(player.getUniqueId());
-        player.closeInventory();
-        if (inv.getViewers().size() > 0) {
+        if (inv.getViewers().size() > 1) {
             return;
         }
 
@@ -635,13 +642,30 @@ public class PhatLootChest {
         }
 
         if (useBreakAndRepawn) {
-            //Return if the Inventory is not empty
-            for (ItemStack item : inv.getContents()) {
-                if (item != null && item.getType() != Material.AIR) {
-                    return;
+            List<PhatLoot> phatLoots = getLinkedPhatLoots();
+            boolean forceBreak = false;
+            boolean canBreak = false;
+            for (PhatLoot phatLoot : phatLoots) {
+                if (phatLoot.breakAndRespawn) {
+                    canBreak = true;
+                    if (phatLoot.removeOnClose) {
+                        forceBreak = true;
+                        break;
+                    }
                 }
             }
-            breakChest(player, getResetTime());
+
+            if (canBreak) {
+                if (!forceBreak) {
+                    //Return if the Inventory is not empty
+                    for (ItemStack item : inv.getContents()) {
+                        if (item != null && item.getType() != Material.AIR) {
+                            return;
+                        }
+                    }
+                }
+                breakChest(player, getResetTime(player, phatLoots));
+            }
         }
     }
 
@@ -651,7 +675,7 @@ public class PhatLootChest {
      * @return The amount of time (in ticks) that the PhatLootChest should reset
      */
     public long getResetTime() {
-        return getResetTime(PhatLoots.getPhatLoots());
+        return getResetTime(null, PhatLoots.getPhatLoots());
     }
 
     /**
@@ -661,20 +685,28 @@ public class PhatLootChest {
      * @return The amount of time (in ticks) that the PhatLootChest should reset
      */
     public long getResetTime(Collection<PhatLoot> phatLoots) {
+        return getResetTime(null, phatLoots);
+    }
+
+    /**
+     * Returns the shortest amount of time until one of the linked PhatLoots resets
+     *
+     * @param player The Player whose reset time is being checked
+     * @param phatLoots The collection of PhatLoots to scan through
+     * @return The amount of time (in ticks) that the PhatLootChest should reset
+     */
+    public long getResetTime(Player player, Collection<PhatLoot> phatLoots) {
         long time = -1;
         for (PhatLoot phatLoot : phatLoots) {
-            //Check if this is a linked PhatLoot
-            if (phatLoot.containsChest(this) && phatLoot.breakAndRespawn) {
-                if (phatLoot.global) {
-                    long temp = phatLoot.getTimeRemaining(this);
-                    if (temp < 1) {
-                        continue;
-                    }
-                    if (time < 0 || temp < time) {
-                        time = temp;
-                    }
-                } else {
-                    break;
+            if (phatLoot.breakAndRespawn) {
+                long temp = phatLoot.global
+                            ? phatLoot.getTimeRemaining(this)
+                            : phatLoot.getTimeRemaining(player, this);
+                if (temp < 1) {
+                    continue;
+                }
+                if (time < 0 || temp < time) {
+                    time = temp;
                 }
             }
         }

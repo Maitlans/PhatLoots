@@ -19,6 +19,8 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
+import java.util.List;
+
 /**
  * Listens for interactions with PhatLootChests
  *
@@ -37,6 +39,13 @@ public class PhatLootsListener implements Listener {
         if (!event.hasBlock() || event.getHand() != EquipmentSlot.HAND) {
             return;
         }
+
+        Block block = event.getClickedBlock();
+        // Quick check to exit early if this is not a PhatLootChest
+        if (!PhatLootChest.isPhatLootChest(block)) {
+            return;
+        }
+
         boolean autoSpill = false;
         switch (event.getAction()) {
         case RIGHT_CLICK_BLOCK:
@@ -54,7 +63,6 @@ public class PhatLootsListener implements Listener {
         }
 
         Player player = event.getPlayer();
-        Block block = event.getClickedBlock();
 
         if (event.isCancelled()) {
             boolean ignoreCancelled = false;
@@ -112,8 +120,25 @@ public class PhatLootsListener implements Listener {
             return;
         }
 
-        //Cancel if the Block was not broken by a Player
         Player player = event.getPlayer();
+        List<PhatLoot> phatLoots = PhatLoots.getPhatLoots(block, player);
+
+        // Check if the player can "mine" the loot
+        boolean canMine = false;
+        for (PhatLoot phatLoot : phatLoots) {
+            if (phatLoot.canMine) {
+                canMine = true;
+                break;
+            }
+        }
+
+        if (canMine) {
+            // Loot the block with autoSpill = true
+            if (PhatLootsAPI.loot(block, player, true)) {
+                // The block is handled by PhatLoots
+                return;
+            }
+        }
 
         //Cancel if the Block was not broken by an Admin
         if (!player.hasPermission("phatloots.admin")) {

@@ -6,6 +6,8 @@ import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+import java.util.List;
+
 /**
  * Manages particle effects for PhatLootChests
  *
@@ -13,6 +15,7 @@ import org.bukkit.entity.Player;
  */
 public class ParticleManager implements Runnable {
     private static long tick = 0;
+    private final Location reusableLoc = new Location(null, 0, 0, 0);
 
     @Override
     public void run() {
@@ -43,10 +46,18 @@ public class ParticleManager implements Runnable {
                     continue;
                 }
 
+                // Reuse location object for distance check
+                reusableLoc.setWorld(world);
+                reusableLoc.setX(chest.getX() + 0.5);
+                reusableLoc.setY(chest.getY() + 0.5);
+                reusableLoc.setZ(chest.getZ() + 0.5);
+
                 // Check for players nearby to save performance
                 boolean playerNearby = false;
-                for (Player player : world.getPlayers()) {
-                    if (player.getLocation().distanceSquared(new Location(world, chest.getX(), chest.getY(), chest.getZ())) < 256) { // 16 blocks
+                List<Player> players = world.getPlayers();
+                for (int i = 0; i < players.size(); i++) {
+                    Player player = players.get(i);
+                    if (player.getLocation().distanceSquared(reusableLoc) < 256) { // 16 blocks
                         playerNearby = true;
                         break;
                     }
@@ -56,12 +67,12 @@ public class ParticleManager implements Runnable {
                     continue;
                 }
 
-                Location loc = new Location(world, chest.getX() + 0.5, chest.getY() + 0.5, chest.getZ() + 0.5);
-                loc.add(phatLoot.particleXOffset, phatLoot.particleYOffset + phatLoot.particleHeight, phatLoot.particleZOffset);
+                // Adjust for offsets
+                reusableLoc.add(phatLoot.particleXOffset, phatLoot.particleYOffset + phatLoot.particleHeight, phatLoot.particleZOffset);
 
                 world.spawnParticle(
                         particle,
-                        loc,
+                        reusableLoc,
                         phatLoot.particleAmount,
                         0.1, 0.1, 0.1, // small spread
                         phatLoot.particleSpeed

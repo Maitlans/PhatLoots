@@ -3,6 +3,7 @@ package com.codisimus.plugins.phatloots;
 import com.codisimus.plugins.phatloots.conditions.LootCondition;
 import com.codisimus.plugins.phatloots.events.*;
 import com.codisimus.plugins.phatloots.loot.*;
+import com.codisimus.plugins.phatloots.util.PhatLootChestLocation;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -87,8 +88,12 @@ public final class PhatLoot implements ConfigurationSerializable {
     // Event handling
     public boolean ignoreCancelled;
 
+    public boolean removeOnClose;
+
+    public boolean canMine;
+
     private final Set<PhatLootChest> chests = new HashSet<>(); //Set of Chests linked to this PhatLoot
-    private final Properties lootTimes = new Properties(); //PhatLootChest'PlayerName=Year'Day'Hour'Minute'Second
+    private final Map<String, Long> lootTimes = new HashMap<>(); //PhatLootChestLocation'PlayerName=Timestamp
 
     /**
      * Constructs a new PhatLoot
@@ -120,6 +125,10 @@ public final class PhatLoot implements ConfigurationSerializable {
         chestInUseMsg = "&cThis chest is currently being used by another player.";
 
         ignoreCancelled = false;
+
+        removeOnClose = false;
+
+        canMine = false;
 
         // Adds default conditions when a PhatLoot is made
         lootConditions.addAll(PhatLoots.plugin.getDefaultConditions());
@@ -169,16 +178,9 @@ public final class PhatLoot implements ConfigurationSerializable {
         }
 
         //Get the correct timestamp
-        String timeStamp = lootTimes.getProperty(getKey(player, chest));
-        long time = 0;
-        if (timeStamp == null) {
+        Long time = lootTimes.get(getKey(player, chest));
+        if (time == null) {
             return 0;
-        }
-
-        try {
-            time = Long.parseLong(timeStamp);
-        } catch (NumberFormatException notLong) {
-            PhatLoots.logger.severe("Fixed corrupted time value!");
         }
 
         //Return -1 if the reset time is set to never
@@ -240,7 +242,7 @@ public final class PhatLoot implements ConfigurationSerializable {
             }
         }
 
-        lootTimes.setProperty(getKey(player, chest), String.valueOf(time.toEpochSecond() * 1000));
+        lootTimes.put(getKey(player, chest), time.toEpochSecond() * 1000);
     }
 
     /**
@@ -488,9 +490,15 @@ public final class PhatLoot implements ConfigurationSerializable {
                 for (ItemStack item : itemList) {
                     Collection<ItemStack> leftOvers = inv.addItem(item).values();
                     if (PhatLootChest.shuffleLoot) {
-                        List<ItemStack> contents = Arrays.asList(inv.getContents());
-                        Collections.shuffle(contents);
-                        inv.setContents(contents.toArray(new ItemStack[0]));
+                        ItemStack[] contents = inv.getContents();
+                        java.util.Random random = java.util.concurrent.ThreadLocalRandom.current();
+                        for (int i = contents.length - 1; i > 0; i--) {
+                            int index = random.nextInt(i + 1);
+                            ItemStack a = contents[index];
+                            contents[index] = contents[i];
+                            contents[i] = a;
+                        }
+                        inv.setContents(contents);
                     }
                     if (!leftOvers.isEmpty()) {
                         //Overflow all that could not fit in the Inventory
@@ -880,7 +888,9 @@ public final class PhatLoot implements ConfigurationSerializable {
      * @param chest The given PhatLootChest
      */
     public void addChest(PhatLootChest chest) {
-        chests.add(chest);
+        if (chests.add(chest)) {
+            PhatLoots.indexPhatLoot(this, new PhatLootChestLocation(chest.getWorldName(), chest.getX(), chest.getY(), chest.getZ()));
+        }
     }
 
     /**
@@ -898,13 +908,18 @@ public final class PhatLoot implements ConfigurationSerializable {
      * @param chest The given PhatLootChest
      */
     public void removeChest(PhatLootChest chest) {
-        chests.remove(chest);
+        if (chests.remove(chest)) {
+            PhatLoots.unindexPhatLoot(this, new PhatLootChestLocation(chest.getWorldName(), chest.getX(), chest.getY(), chest.getZ()));
+        }
     }
 
     /**
      * Removes all PhatLootChests that are linked to this PhatLoot
      */
     public void removeChests() {
+        for (PhatLootChest chest : chests) {
+            PhatLoots.unindexPhatLoot(this, new PhatLootChestLocation(chest.getWorldName(), chest.getX(), chest.getY(), chest.getZ()));
+        }
         chests.clear();
     }
 
@@ -976,12 +991,7 @@ public final class PhatLoot implements ConfigurationSerializable {
         } else {
             //Find the PhatLootChest of the given Block and reset it
             String chest = PhatLootChest.getChest(block).toString();
-            for (String key : lootTimes.stringPropertyNames()) {
-                if (key.startsWith(chest)) {
-                    lootTimes.remove(key);
-                    break;
-                }
-            }
+            lootTimes.keySet().removeIf(key -> key.startsWith(chest));
         }
     }
 
@@ -1009,15 +1019,7 @@ public final class PhatLoot implements ConfigurationSerializable {
      * @param prefix The first word of the key (such as the Player or World)
      */
     private void removeLootTimes(String prefix) {
-        LinkedList<String> keysToRemove = new LinkedList<>();
-        for (String key : lootTimes.stringPropertyNames()) {
-            if (key.startsWith(prefix + "'")) {
-                keysToRemove.add(key);
-            }
-        }
-        for (String key : keysToRemove) {
-            lootTimes.remove(key);
-        }
+        lootTimes.keySet().removeIf(key -> key.startsWith(prefix + "'"));
     }
 
     /**
@@ -1039,20 +1041,6 @@ public final class PhatLoot implements ConfigurationSerializable {
             return;
         }
 
-        Set<String> keys; //The Set of all keys to check
-
-        if (block == null) { //Add all keys
-            keys = lootTimes.stringPropertyNames();
-        } else { //Add each key that starts with the chest location
-            keys = new HashSet<>();
-            String chest = PhatLootChest.getChest(block).toString();
-            for (String key : lootTimes.stringPropertyNames()) {
-                if (key.startsWith(chest)) {
-                    keys.add(key);
-                }
-            }
-        }
-
         //Calculate the latest timestamp that would have reset by now
         long time = Instant.now().toEpochMilli()
                     - days * DateUtils.MILLIS_PER_DAY
@@ -1060,11 +1048,11 @@ public final class PhatLoot implements ConfigurationSerializable {
                     - minutes * DateUtils.MILLIS_PER_MINUTE
                     - seconds * DateUtils.MILLIS_PER_SECOND;
 
-        //Remove each key whose value is less than the calculated time
-        for (String key : keys) {
-            if (Long.parseLong(lootTimes.getProperty(key)) < time) {
-                lootTimes.remove(key);
-            }
+        if (block == null) {
+            lootTimes.values().removeIf(value -> value < time);
+        } else {
+            String chest = PhatLootChest.getChest(block).toString();
+            lootTimes.entrySet().removeIf(entry -> entry.getKey().startsWith(chest) && entry.getValue() < time);
         }
     }
 
@@ -1090,8 +1078,12 @@ public final class PhatLoot implements ConfigurationSerializable {
         }
 
         File file = new File(PhatLoots.dataFolder, "LootTimes" + File.separator + name + ".properties");
+        Properties prop = new Properties();
+        for (Map.Entry<String, Long> entry : lootTimes.entrySet()) {
+            prop.setProperty(entry.getKey(), entry.getValue().toString());
+        }
         try (FileOutputStream fos = new FileOutputStream(file)) {
-            lootTimes.store(fos, null);
+            prop.store(fos, null);
         } catch (IOException ex) {
             PhatLoots.logger.log(Level.SEVERE, "Save Failed!", ex);
         }
@@ -1105,10 +1097,19 @@ public final class PhatLoot implements ConfigurationSerializable {
         if (!file.exists()) {
             return;
         }
+        Properties prop = new Properties();
         try (FileInputStream fis = new FileInputStream(file)) {
-            lootTimes.load(fis);
+            prop.load(fis);
         } catch (IOException ex) {
             PhatLoots.logger.log(Level.SEVERE, "Load Failed!", ex);
+        }
+
+        for (String key : prop.stringPropertyNames()) {
+            try {
+                lootTimes.put(key, Long.parseLong(prop.getProperty(key)));
+            } catch (NumberFormatException ex) {
+                PhatLoots.logger.severe("Invalid time value for " + key + " in " + name);
+            }
         }
         clean(null);
     }
@@ -1164,7 +1165,11 @@ public final class PhatLoot implements ConfigurationSerializable {
                 String line = scanner.nextLine();
                 String[] split = line.split("'");
                 if (split.length == 4) {
-                    chests.add(PhatLootChest.getChest(split));
+                    PhatLootChest chest = PhatLootChest.getChest(split);
+                    if (chest != null) {
+                        chests.add(chest);
+                        PhatLoots.indexPhatLoot(this, new PhatLootChestLocation(chest.getWorldName(), chest.getX(), chest.getY(), chest.getZ()));
+                    }
                 } else {
                     PhatLoots.logger.severe("Invalid chest data for PhatLoot: " + name);
                     PhatLoots.logger.severe("Failed line of data: " + line);
@@ -1232,6 +1237,10 @@ public final class PhatLoot implements ConfigurationSerializable {
 
         map.put("IgnoreCancelled", ignoreCancelled);
 
+        map.put("RemoveOnClose", removeOnClose);
+
+        map.put("CanMine", canMine);
+
         map.put("LootList", lootList);
         map.put("LootConditions", lootConditions);
         return map;
@@ -1280,6 +1289,12 @@ public final class PhatLoot implements ConfigurationSerializable {
             }
             if (map.containsKey("IgnoreCancelled")) {
                 ignoreCancelled = (Boolean) map.get(currentLine = "IgnoreCancelled");
+            }
+            if (map.containsKey("RemoveOnClose")) {
+                removeOnClose = (Boolean) map.get(currentLine = "RemoveOnClose");
+            }
+            if (map.containsKey("CanMine")) {
+                canMine = (Boolean) map.get(currentLine = "CanMine");
             }
 
             //Check which version the file is

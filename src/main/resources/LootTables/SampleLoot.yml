@@ -11,7 +11,7 @@ SampleLoot:
   # --- Configurable Event Handling ---
   # If true, PhatLoots will process the interaction even if another plugin 
   # (like WorldGuard) has cancelled the event.
-  IgnoreCancelled: false
+  IgnoreCancelled: true
 
   # --- Dynamic Particle Effects ---
   # Settings for the visual particle effects at linked chests.
@@ -26,15 +26,22 @@ SampleLoot:
     Amount: 10
     Delay: 20
 
+  # --- Standard Settings ---
   AutoLoot: false
-  BreakAndRespawn: false
+  # If true, the chest will break (despawn) after being looted.
+  BreakAndRespawn: true
+  # If true, the chest will break when closed even if it still contains items.
+  # This only works if BreakAndRespawn is also set to true.
+  RemoveOnClose: false
+  # If true, players can break the block to receive the loot immediately on the ground.
+  CanMine: false
   Global: false
   RoundDownTime: false
   Reset:
     Days: 0
     Hours: 0
     Minutes: 0
-    Seconds: 0
+    Seconds: 10
   LootConditions: []
   LootList:
     - ==: LootCollection

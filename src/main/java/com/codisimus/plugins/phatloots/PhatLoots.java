@@ -44,6 +44,7 @@ import com.codisimus.plugins.phatloots.loot.MythicMobsItem;
 import com.codisimus.plugins.phatloots.loot.UnidentifiedItem;
 import com.codisimus.plugins.phatloots.regions.RegionHook;
 import com.codisimus.plugins.phatloots.regions.WorldGuardRegionHook;
+import com.codisimus.plugins.phatloots.util.PhatLootChestLocation;
 import com.codisimus.plugins.phatloots.util.PhatLootsUtil;
 import com.google.common.io.Files;
 import net.milkbowl.vault.economy.Economy;
@@ -92,6 +93,7 @@ public class PhatLoots extends JavaPlugin {
     public static final HashMap<String, RegionHook> regionHooks = new HashMap<>(); //Plugin Name -> RegionHook
     public static final Map<Material, HashMap<String, String>> types = new HashMap<>(); //Material -> World Name -> PhatLoot Name
     private static final HashMap<String, PhatLoot> phatLoots = new HashMap<>(); //PhatLoot Name -> PhatLoot
+    private static final Map<PhatLootChestLocation, List<PhatLoot>> spatialIndex = new HashMap<>(); //Location -> PhatLoots
 
     private PluginHookManager hookManager;
 
@@ -612,17 +614,48 @@ public class PhatLoots extends JavaPlugin {
 
         if (PhatLootsUtil.isLinkableType(block)) {
             block = PhatLootsUtil.getLeftSide(block);
-            if (PhatLootChest.isPhatLootChest(block)) {
-                PhatLootChest chest = PhatLootChest.getChest(block);
-                for (PhatLoot phatLoot : phatLoots.values()) {
-                    if (phatLoot.containsChest(chest)) {
-                        phatLootList.add(phatLoot);
-                    }
-                }
+            PhatLootChestLocation loc = new PhatLootChestLocation(block);
+            List<PhatLoot> linked = spatialIndex.get(loc);
+            if (linked != null) {
+                phatLootList.addAll(linked);
             }
         }
 
         return phatLootList;
+    }
+
+    /**
+     * Internal method to add a PhatLoot to the spatial index.
+     */
+    public static void indexPhatLoot(PhatLoot phatLoot, PhatLootChestLocation loc) {
+        List<PhatLoot> linked = spatialIndex.computeIfAbsent(loc, k -> new ArrayList<>());
+        if (!linked.contains(phatLoot)) {
+            linked.add(phatLoot);
+        }
+    }
+
+    /**
+     * Internal method to remove a PhatLoot from the spatial index.
+     */
+    public static void unindexPhatLoot(PhatLoot phatLoot, PhatLootChestLocation loc) {
+        List<PhatLoot> linked = spatialIndex.get(loc);
+        if (linked != null) {
+            linked.remove(phatLoot);
+            if (linked.isEmpty()) {
+                spatialIndex.remove(loc);
+            }
+        }
+    }
+
+    /**
+     * Returns true if the given Block is linked to a PhatLoot.
+     */
+    public static boolean isPhatLootChest(Block block) {
+        if (PhatLootsUtil.isLinkableType(block)) {
+            return true;
+        }
+        block = PhatLootsUtil.getLeftSide(block);
+        return spatialIndex.containsKey(new PhatLootChestLocation(block));
     }
 
     /**
@@ -714,6 +747,7 @@ public class PhatLoots extends JavaPlugin {
         saveLootTimes();
 
         phatLoots.clear();
+        spatialIndex.clear();
         plugin.reloadConfig();
         load();
 
