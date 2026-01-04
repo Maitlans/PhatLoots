@@ -118,6 +118,14 @@ public class PhatLoots extends JavaPlugin {
         logger = getLogger();
         plugin = this;
 
+        // Warmup Legacy Material Support to prevent DFU freeze during first loot event
+        try {
+            Material.values();
+            Class.forName("org.bukkit.craftbukkit.legacy.CraftLegacy");
+        } catch (Exception ignored) {
+            // This may fail on non-CraftBukkit based servers or older versions, which is fine
+        }
+
         /* Create data folders */
         File dir = this.getDataFolder();
         if (!dir.isDirectory()) {

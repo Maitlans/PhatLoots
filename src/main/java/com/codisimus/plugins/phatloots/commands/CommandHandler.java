@@ -1,6 +1,9 @@
 package com.codisimus.plugins.phatloots.commands;
 
+import com.codisimus.plugins.phatloots.PhatLoot;
 import com.codisimus.plugins.phatloots.PhatLoots;
+import com.codisimus.plugins.phatloots.loot.Loot;
+import com.codisimus.plugins.phatloots.loot.LootCollection;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
@@ -12,6 +15,8 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -21,14 +26,19 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Properties;
 import java.util.TreeSet;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 
-public class CommandHandler implements CommandExecutor {
+public class CommandHandler implements CommandExecutor, TabCompleter {
 
     private enum ParameterType {
         STRING, INT, DOUBLE, BOOLEAN, MATERIAL, PLAYER, OFFLINEPLAYER,
@@ -77,8 +87,211 @@ public class CommandHandler implements CommandExecutor {
                 plugin.getLogger().warning("CodCommand " + commandGroup + " was not found in plugin.yml");
             } else {
                 command.setExecutor(this);
+                command.setTabCompleter(this);
             }
         });
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 0) {
+            return Collections.emptyList();
+        }
+
+        String input = args[args.length - 1].toLowerCase();
+
+        if (args.length == 1) {
+            // Suggest subcommands
+            List<String> suggestions = new ArrayList<>();
+            for (CodCommand meta : metas) {
+                if (meta.command().startsWith("&")) continue;
+                if (meta.command().toLowerCase().startsWith(input)) {
+                    suggestions.add(meta.command());
+                }
+            }
+            // Add aliases
+            for (Object key : aliases.keySet()) {
+                String aliasName = (String) key;
+                if (aliasName.toLowerCase().startsWith(input)) {
+                    suggestions.add(aliasName);
+                }
+            }
+            if ("help".startsWith(input)) {
+                suggestions.add("help");
+            }
+            return suggestions.stream().distinct().sorted().collect(Collectors.toList());
+        }
+
+        // Subcommand is determined
+        String subcommand = aliases.containsKey(args[0])
+                ? aliases.getProperty(args[0])
+                : args[0];
+
+        if (args.length == 2) {
+            // Could be a nested subcommand or the first parameter
+            List<String> suggestions = new ArrayList<>();
+
+            // Check for nested subcommands
+            for (CodCommand meta : metas) {
+                if (meta.command().equals(subcommand) && !meta.subcommand().isEmpty()) {
+                    if (meta.subcommand().toLowerCase().startsWith(input)) {
+                        suggestions.add(meta.subcommand());
+                    }
+                }
+            }
+
+            if (!suggestions.isEmpty()) {
+                return suggestions.stream().distinct().sorted().collect(Collectors.toList());
+            }
+        }
+
+        // It's a parameter
+        // Find matching meta to determine parameter types
+        CodCommand meta = findMeta(subcommand, args.length > 2 ? args[1] : "");
+        if (meta == null) {
+            // Try without the second arg as subcommand
+            meta = findMeta(subcommand, "");
+        }
+
+        if (meta != null) {
+            int paramIndex; // The index in the method parameters (after sender)
+            if (meta.command().equals("&variable")) {
+                paramIndex = args.length;
+            } else {
+                paramIndex = args.length - (meta.subcommand().isEmpty() ? 1 : 2);
+            }
+
+            // Find method with enough parameters
+            for (Method method : methods.get(meta)) {
+                Class<?>[] params = method.getParameterTypes();
+                if (params.length > paramIndex) {
+                    Class<?> targetParam = params[paramIndex];
+                    if (targetParam == String[].class) {
+                        // Handle complex ManageLoot parameters
+                        return getComplexSuggestions(args);
+                    }
+                    List<String> suggestions = getSuggestions(targetParam, input);
+                    
+                    // Add special literals
+                    if (subcommand.equals("time") && input.startsWith("n")) {
+                        suggestions.add("never");
+                    }
+                    if ((subcommand.equals("reset") || subcommand.equals("clean")) && input.startsWith("a")) {
+                        suggestions.add("all");
+                    }
+                    if (subcommand.equals("give") && args.length == 2 && input.startsWith("a")) {
+                        suggestions.add("all");
+                    }
+
+                    return suggestions.stream()
+                            .filter(s -> s.toLowerCase().startsWith(input))
+                            .collect(Collectors.toList());
+                }
+            }
+        }
+
+        return Collections.emptyList();
+    }
+
+    private List<String> getComplexSuggestions(String[] args) {
+        String input = args[args.length - 1].toLowerCase();
+        List<String> suggestions = new ArrayList<>();
+
+        if (input.isEmpty()) {
+            suggestions.add("p");
+            suggestions.add("c");
+            suggestions.add("%");
+            suggestions.add("#");
+            suggestions.add("e");
+            return suggestions;
+        }
+
+        char prefix = input.charAt(0);
+        String value = input.substring(1).toLowerCase();
+
+        switch (prefix) {
+            case 'p':
+                return PhatLoots.getPhatLoots().stream()
+                        .map(pl -> "p" + pl.getName())
+                        .filter(s -> s.toLowerCase().startsWith(input))
+                        .collect(Collectors.toList());
+            case 'c':
+                // Try to find PhatLoot name in previous args
+                String plName = null;
+                for (String arg : args) {
+                    if (arg.startsWith("p")) {
+                        plName = arg.substring(1);
+                        break;
+                    }
+                }
+                if (plName != null) {
+                    PhatLoot pl = PhatLoots.getPhatLoot(plName);
+                    if (pl != null) {
+                        List<String> colls = new ArrayList<>();
+                        for (Loot loot : pl.lootList) {
+                            if (loot instanceof LootCollection) {
+                                addCollections((LootCollection) loot, colls);
+                            }
+                        }
+                        return colls.stream()
+                                .map(c -> "c" + c)
+                                .filter(s -> s.toLowerCase().startsWith(input))
+                                .collect(Collectors.toList());
+                    }
+                }
+                break;
+            case 'e':
+                return Arrays.stream(Enchantment.values())
+                        .map(e -> "e" + e.getKey().getKey())
+                        .filter(s -> s.toLowerCase().startsWith(input))
+                        .collect(Collectors.toList());
+        }
+
+        return suggestions;
+    }
+
+    private void addCollections(LootCollection collection, List<String> names) {
+        names.add(collection.name);
+        for (Loot loot : collection.getLootList()) {
+            if (loot instanceof LootCollection) {
+                addCollections((LootCollection) loot, names);
+            }
+        }
+    }
+
+    private List<String> getSuggestions(Class<?> parameter, String input) {
+        ParameterType type = ParameterType.getType(parameter);
+        if (type == null) return Collections.emptyList();
+
+        String lowerInput = input.toLowerCase();
+        switch (type) {
+            case PLAYER:
+                return Bukkit.getOnlinePlayers().stream()
+                        .map(Player::getName)
+                        .filter(name -> name.toLowerCase().startsWith(lowerInput))
+                        .collect(Collectors.toList());
+            case WORLD:
+                return Bukkit.getWorlds().stream()
+                        .map(org.bukkit.World::getName)
+                        .filter(name -> name.toLowerCase().startsWith(lowerInput))
+                        .collect(Collectors.toList());
+            case PHATLOOT:
+                return PhatLoots.getPhatLoots().stream()
+                        .map(PhatLoot::getName)
+                        .filter(name -> name.toLowerCase().startsWith(lowerInput))
+                        .collect(Collectors.toList());
+            case BOOLEAN:
+                return Arrays.asList("true", "false").stream()
+                        .filter(s -> s.startsWith(lowerInput))
+                        .collect(Collectors.toList());
+            case MATERIAL:
+                return Arrays.stream(Material.values())
+                        .map(m -> m.name().toLowerCase())
+                        .filter(name -> name.startsWith(lowerInput))
+                        .collect(Collectors.toList());
+            default:
+                return Collections.emptyList();
+        }
     }
 
     /**
